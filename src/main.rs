@@ -101,12 +101,11 @@ fn increase_size(
 ) {
     if let Ok(entity) = query.get_single_mut() {
         if input.just_pressed(KeyCode::Space) {
-            let tmp_size = size.player + 50.;
-            size.player = tmp_size;
+            size.player = size.player + 15.;
             commands
                 .entity(entity)
                 .insert(Into::<bevy::sprite::Mesh2dHandle>::into(meshes
-                    .add(shape::Circle::new(tmp_size * 3.)
+                    .add(shape::Circle::new(size.player)
                         .into())));
         }
     }
@@ -123,21 +122,19 @@ fn movement(
     if let Ok(mut transform) = query.get_single_mut() {
         let window = windows.get_primary_mut().unwrap();
         let mut direction = Vec3::ZERO;
-        let size = size.player;
-        let speed = speed.player;
 
-        if input.pressed(KeyCode::W) && transform.translation.y + size < window.height()/2.  {
+        if input.pressed(KeyCode::W) && transform.translation.y + size.player < window.height()/2.  {
             direction.y += 1.;
         }
-        if input.pressed(KeyCode::S) && transform.translation.y - size > -window.height()/2.  {
+        if input.pressed(KeyCode::S) && transform.translation.y - size.player > -window.height()/2.  {
             direction.y -= 1.;
         }
-        if input.pressed(KeyCode::D) && transform.translation.x + size < window.width()/2.  {
+        if input.pressed(KeyCode::D) && transform.translation.x + size.player < window.width()/2.  {
             direction.x += 1.;
         }
-        if input.pressed(KeyCode::A) && transform.translation.x - size > -window.width()/2. {
+        if input.pressed(KeyCode::A) && transform.translation.x - size.player > -window.width()/2. {
             direction.x -= 1.;
         }
-        transform.translation += speed * time.delta_seconds() * direction.normalize_or_zero();
+        transform.translation += speed.player * time.delta_seconds() * direction.normalize_or_zero();
     }
 }
