@@ -12,8 +12,8 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 title: "Proto".to_string(),
-                width: 1280.,
-                height: 720.,
+                width: 1980.,
+                height: 1080.,
                 ..default()
             },
             ..default()
@@ -41,7 +41,9 @@ fn main() {
 #[derive(Component)]
 struct Player;
 #[derive(Component)]
-struct Orb;
+struct Orb(u32);
+#[derive(Component)]
+struct OrbBorder(u32);
 #[derive(Resource)]
 struct Size {
     player: f32,
@@ -72,7 +74,7 @@ fn setup(
 
     // Orbs
     size.orb = window.width() * 0.1;
-    speed.orb = 500.; // window.width() / 512.;
+    speed.orb = window.width()/8.; // window.width() / 512.;
 
     for i in 0..4{
         let mut rng = rand::thread_rng();
@@ -82,10 +84,17 @@ fn setup(
 
         commands.spawn(MaterialMesh2dBundle {
             mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
+            material: materials.add(ColorMaterial::from(Color::RED)),
+            transform: Transform::from_translation(Vec3::new(x, y, 0.)),
+            ..default()
+        }).insert(OrbBorder(i));
+
+        commands.spawn(MaterialMesh2dBundle {
+            mesh: meshes.add(shape::Circle::new(size.orb * 0.975).into()).into(),
             material: materials.add(ColorMaterial::from(Color::BLACK)),
             transform: Transform::from_translation(Vec3::new(x, y, 0.)),
             ..default()
-        }).insert(Orb);
+        }).insert(Orb(i));
     }
 
     // Stars
@@ -172,7 +181,7 @@ fn orb_movement(
     speed: Res<Speed>,
     size: Res<Size>,
     windows: Res<Windows>,
-    mut query: Query<&mut Transform, With<Orb>>,
+    mut query: Query<(&mut Transform, With<OrbBorder>)>,
 ) {
     let mut direction = Vec3::ZERO;
     let mut rng = rand::thread_rng();
