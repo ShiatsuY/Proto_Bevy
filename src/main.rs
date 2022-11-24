@@ -85,7 +85,7 @@ fn setup(
         commands.spawn(MaterialMesh2dBundle {
             mesh: meshes.add(shape::Circle::new(size.orb * 0.975).into()).into(),
             material: materials.add(ColorMaterial::from(Color::BLACK)),
-            transform: Transform::from_translation(Vec3::new(x, y, 0.)),
+            transform: Transform::from_translation(Vec3::new(x, y, 2.)),
             ..default()
         })
         .insert(Orb)
@@ -93,7 +93,7 @@ fn setup(
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
                 material: materials.add(ColorMaterial::from(Color::RED)),
-                transform: Transform::from_translation(Vec3::new(x, y, 0.)),
+                transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
                 ..default()
             });
         });
@@ -115,7 +115,7 @@ fn setup(
     commands.spawn(MaterialMesh2dBundle {
         mesh: meshes.add(shape::Circle::new(size.player).into()).into(),
         material: materials.add(ColorMaterial::from(Color::YELLOW)),
-        transform: Transform::from_translation(Vec3::new(p_x, p_y, 0.)),
+        transform: Transform::from_translation(Vec3::new(p_x, p_y, 3.)),
         ..default()
     }).insert(Player);
 
