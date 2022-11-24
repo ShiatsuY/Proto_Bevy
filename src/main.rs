@@ -12,8 +12,8 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 title: "Proto".to_string(),
-                width: 1980.,
-                height: 1080.,
+                width: 640.,
+                height: 360.,
                 ..default()
             },
             ..default()
@@ -41,9 +41,9 @@ fn main() {
 #[derive(Component)]
 struct Player;
 #[derive(Component)]
-struct Orb(u32);
+struct Orb;
 #[derive(Component)]
-struct OrbBorder(u32);
+struct OrbBorder;
 #[derive(Resource)]
 struct Size {
     player: f32,
@@ -83,18 +83,20 @@ fn setup(
         let y = rng.gen_range(size.orb - window.height()/2. .. -size.orb + window.height()/2.);
 
         commands.spawn(MaterialMesh2dBundle {
-            mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
-            material: materials.add(ColorMaterial::from(Color::RED)),
-            transform: Transform::from_translation(Vec3::new(x, y, 0.)),
-            ..default()
-        }).insert(OrbBorder(i));
-
-        commands.spawn(MaterialMesh2dBundle {
             mesh: meshes.add(shape::Circle::new(size.orb * 0.975).into()).into(),
             material: materials.add(ColorMaterial::from(Color::BLACK)),
             transform: Transform::from_translation(Vec3::new(x, y, 0.)),
             ..default()
-        }).insert(Orb(i));
+        })
+        .insert(Orb)
+        .with_children(|parent| {
+            parent.spawn(MaterialMesh2dBundle {
+                mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
+                material: materials.add(ColorMaterial::from(Color::RED)),
+                transform: Transform::from_translation(Vec3::new(x, y, 0.)),
+                ..default()
+            });
+        });
     }
 
     // Stars
@@ -109,7 +111,7 @@ fn setup(
     let p_x = -window.width()/4.;
     let p_y = 0.;
     size.player = window.width()/80.;
-    speed.player = window.width()/4.;
+    speed.player = window.width()/3.;
     commands.spawn(MaterialMesh2dBundle {
         mesh: meshes.add(shape::Circle::new(size.player).into()).into(),
         material: materials.add(ColorMaterial::from(Color::YELLOW)),
@@ -130,6 +132,7 @@ fn increase_size(
     input: Res<Input<KeyCode>>,
     windows: Res<Windows>,
     mut size: ResMut<Size>,
+    mut speed: ResMut<Speed>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut commands: Commands,
     mut query: Query<Entity, With<Player>>,
@@ -138,6 +141,11 @@ fn increase_size(
 
     if let Ok(entity) = query.get_single_mut() {
         if input.just_pressed(KeyCode::Space) {
+            if speed.orb == 0.0 {
+                speed.orb = window.width()/8.;
+            } else {
+                speed.orb = 0.0;
+            }
             size.player = size.player + window.height()/4800.;
             commands
                 .entity(entity)
@@ -181,7 +189,7 @@ fn orb_movement(
     speed: Res<Speed>,
     size: Res<Size>,
     windows: Res<Windows>,
-    mut query: Query<(&mut Transform, With<OrbBorder>)>,
+    mut query: Query<&mut Transform, With<Orb>>,
 ) {
     let mut direction = Vec3::ZERO;
     let mut rng = rand::thread_rng();
