@@ -4,20 +4,18 @@ use bevy::{
 };
 use rand::Rng;
 
-
-
-
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 title: "Proto".to_string(),
-                width: 640.,
-                height: 360.,
+                width: 1280.,
+                height: 720.,
                 ..default()
             },
             ..default()
         }))
+        .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .insert_resource(Size{
             player: 0.,
             star: 0.,
@@ -35,6 +33,7 @@ fn main() {
         .add_system(movement)
         .add_system(orb_movement)
         .add_system(increase_size)
+        .add_system(move_stars)
         .run();
 }
 
@@ -43,7 +42,8 @@ struct Player;
 #[derive(Component)]
 struct Orb;
 #[derive(Component)]
-struct OrbBorder;
+struct Star;
+
 #[derive(Resource)]
 struct Size {
     player: f32,
@@ -71,14 +71,13 @@ fn setup(
     commands.spawn(Camera2dBundle::default());
 
     let window = windows.get_primary_mut().unwrap();
+    let mut rng = rand::thread_rng();
 
     // Orbs
     size.orb = window.width() * 0.1;
     speed.orb = window.width()/8.; // window.width() / 512.;
 
     for i in 0..4{
-        let mut rng = rand::thread_rng();
-
         let x = (window.width() + size.orb + i as f32 * size.orb * 2. + i as f32 * size.orb) - window.width()/2.;
         let y = rng.gen_range(size.orb - window.height()/2. .. -size.orb + window.height()/2.);
 
@@ -100,13 +99,23 @@ fn setup(
     }
 
     // Stars
-    commands.spawn(MaterialMesh2dBundle {
-        mesh: meshes.add(shape::Circle::new(size.star).into()).into(),
-        material: materials.add(ColorMaterial::from(Color::WHITE)),
-        transform: Transform::from_translation(Vec3::new(0., 0., 0.)),
-        ..default()
-    });
+    size.star = window.width()/1000.;
+    speed.star = window.width()/2000.;
+    let stars = ((window.width()/window.height())*100.).floor();
+    println!("{}", stars);
 
+    for _i in 0 .. stars as u8{
+        let x = rng.gen_range(size.star - window.width()/2. .. -size.star + window.width()/2.);
+        let y = rng.gen_range(size.star - window.height()/2. .. -size.star + window.height()/2.);
+        commands.spawn(MaterialMesh2dBundle {
+            mesh: meshes.add(shape::Circle::new(size.star).into()).into(),
+            material: materials.add(ColorMaterial::from(Color::WHITE)),
+            transform: Transform::from_translation(Vec3::new(x, y, 0.)),
+            ..default()
+        })
+        .insert(Star);
+    }
+    
     // Player (should be drawn at the end)
     let p_x = -window.width()/4.;
     let p_y = 0.;
@@ -117,8 +126,15 @@ fn setup(
         material: materials.add(ColorMaterial::from(Color::YELLOW)),
         transform: Transform::from_translation(Vec3::new(p_x, p_y, 3.)),
         ..default()
-    }).insert(Player);
-
+    }).insert(Player)
+        .with_children(|parent| {
+            parent.spawn(MaterialMesh2dBundle {
+                mesh: meshes.add(shape::Circle::new(size.orb * 0.01).into()).into(),
+                material: materials.add(ColorMaterial::from(Color::WHITE)),
+                transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
+                ..default()
+            });
+        });
 }
 
 fn toggle_cursor(input: Res<Input<KeyCode>>, mut windows: ResMut<Windows>) {
@@ -152,6 +168,22 @@ fn increase_size(
                 .insert(Into::<bevy::sprite::Mesh2dHandle>::into(meshes
                     .add(shape::Circle::new(size.player)
                         .into())));
+        }
+    }
+}
+
+fn move_stars(
+    size: Res<Size>,
+    speed: Res<Speed>,
+    mut windows: ResMut<Windows>,
+    mut query: Query<&mut Transform, With<Star>>,
+) {
+    let window = windows.get_primary_mut().unwrap();
+    for mut transform in query.iter_mut() {
+        if transform.translation.x + size.star > -window.width()/2. {
+            transform.translation.x -= speed.star;
+        } else {
+            transform.translation.x = window.width()/2. + size.star;
         }
     }
 }
