@@ -34,11 +34,14 @@ fn main() {
         .add_system(orb_movement)
         .add_system(increase_size)
         .add_system(move_stars)
+        .add_system(collision)
         .run();
 }
 
 #[derive(Component)]
 struct Player;
+#[derive(Component)]
+struct Pickup;
 #[derive(Component)]
 struct Orb;
 #[derive(Component)]
@@ -73,6 +76,30 @@ fn setup(
     let window = windows.get_primary_mut().unwrap();
     let mut rng = rand::thread_rng();
 
+    // Pickups
+    size.pickup = window.width() * 0.01;
+
+    for _i in 0..9{
+        let x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
+        let y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
+
+        commands.spawn(MaterialMesh2dBundle {
+            mesh: meshes.add(shape::Circle::new(size.pickup * 0.5).into()).into(),
+            material: materials.add(ColorMaterial::from(Color::WHITE)),
+            transform: Transform::from_translation(Vec3::new(x, y, 1.)),
+            ..default()
+        })
+        .insert(Pickup)
+        .with_children(|parent| {
+            parent.spawn(MaterialMesh2dBundle {
+                mesh: meshes.add(shape::Circle::new(size.pickup).into()).into(),
+                material: materials.add(ColorMaterial::from(Color::BLUE)),
+                transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
+                ..default()
+            });
+        });
+    }
+
     // Orbs
     size.orb = window.width() * 0.1;
     speed.orb = window.width()/8.; // window.width() / 512.;
@@ -102,7 +129,7 @@ fn setup(
     size.star = window.width()/1000.;
     speed.star = window.width()/2000.;
     let stars = ((window.width()/window.height())*100.).floor();
-    println!("{}", stars);
+    //println!("{}", stars);
 
     for _i in 0 .. stars as u8{
         let x = rng.gen_range(size.star - window.width()/2. .. -size.star + window.width()/2.);
@@ -119,7 +146,7 @@ fn setup(
     // Player (should be drawn at the end)
     let p_x = -window.width()/4.;
     let p_y = 0.;
-    size.player = window.width()/80.;
+    size.player = window.width()/50.;
     speed.player = window.width()/3.;
     commands.spawn(MaterialMesh2dBundle {
         mesh: meshes.add(shape::Circle::new(size.player).into()).into(),
@@ -142,6 +169,61 @@ fn toggle_cursor(input: Res<Input<KeyCode>>, mut windows: ResMut<Windows>) {
     if input.just_pressed(KeyCode::Space) {
         window.set_cursor_visibility(!window.cursor_visible());
     }
+}
+
+fn collision(
+    windows: Res<Windows>,
+    mut speed: ResMut<Speed>,
+    size: Res<Size>,
+    player_q: Query<&Transform, (With<Player>, Without<Orb>, Without<Pickup>)>,
+    orb_q: Query<&Transform, (With<Orb>, Without<Pickup>)>,
+    mut pick_q: Query<&mut Transform, With<Pickup>>,
+) {
+    // There can ever be only 1 Player
+    if let Ok(transform_p) = player_q.get_single() {
+
+        // collision with orb
+        for transform_o in orb_q.iter(){
+            let a = size.orb + size.player;
+            let x = transform_o.translation.x - transform_p.translation.x;
+            let y = transform_o.translation.y - transform_p.translation.y;
+
+            if a > (((x*x) + (y*y)) as f32).sqrt(){
+                speed.orb = 0.0;
+                speed.player = 0.0;
+            }
+
+            for mut transform_pick in pick_q.iter_mut(){
+                let a2 = size.pickup + size.orb;
+                let x2 = transform_pick.translation.x - transform_o.translation.x;
+                let y2 = transform_pick.translation.y - transform_o.translation.y;
+            
+                if a2 > (((x2*x2) + (y2*y2)) as f32).sqrt(){
+                    let window = windows.get_primary().unwrap();
+                    let mut rng = rand::thread_rng();
+                    transform_pick.translation.x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
+                    transform_pick.translation.y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
+                }
+            }
+
+        }
+
+        // collision with pickup
+        for mut transform_pick in pick_q.iter_mut(){
+            let a = size.pickup + size.player;
+            let x = transform_pick.translation.x - transform_p.translation.x;
+            let y = transform_pick.translation.y - transform_p.translation.y;
+        
+            if a > (((x*x) + (y*y)) as f32).sqrt(){
+                let window = windows.get_primary().unwrap();
+                let mut rng = rand::thread_rng();
+                transform_pick.translation.x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
+                transform_pick.translation.y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
+            }
+        }
+    }
+
+
 }
 
 fn increase_size(
