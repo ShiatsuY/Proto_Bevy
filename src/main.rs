@@ -45,9 +45,9 @@ fn main() {
                 .with_system(collision_handling.after(collision_detection))
                 .with_system(update_time)
                 .with_system(update_score)
+                .with_system(move_stars)
         )
         //.add_system(toggle_cursor)
-        .add_system(move_stars)
         .add_system(toggle_state)
         .add_system(bevy::window::close_on_esc)
         .run();
@@ -422,6 +422,9 @@ fn collision_detection(
 }
 
 fn collision_handling(
+    windows: Res<Windows>,
+    size: Res<Size>,
+    mut score: ResMut<Score>,
     mut event_reader: EventReader<CollisionEvent>,
     mut query: Query<(Entity, &CollideType, &mut Transform)>,
 )
@@ -444,13 +447,19 @@ fn collision_handling(
                 }
                 match (collide_a, collide_b) {
                     (Some(CollideType::Player), Some(CollideType::Pickup)) => {
-                        println!("player hit pickup")
+                        //println!("player hit pickup")
+                        let window = windows.get_primary().unwrap();
+                        let mut rng = rand::thread_rng();
+                        let mut b = transform_b.unwrap();
+                        b.translation.x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
+                        b.translation.y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
+                        score.value += 1;
                     },
                     (Some(CollideType::Player), Some(CollideType::Orb)) => {
-                        println!("player hit orb")
+                        //println!("player hit orb")
                     },
                     (Some(CollideType::Pickup), Some(CollideType::Orb)) => {
-                        println!("pickup hit orb")
+                        //println!("pickup hit orb")
                     },
                     _ => {
                         println!("unknown collision")
