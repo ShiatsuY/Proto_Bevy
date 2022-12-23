@@ -26,6 +26,7 @@ fn main() {
             player: 0.,
             star: 0.,
             orb: 0.,
+            pickup: 0.,
         })
         .insert_resource(Score{
             value: 0,
@@ -100,6 +101,7 @@ struct Speed {
     player: f32,
     star: f32,
     orb: f32,
+    pickup: f32,
 }
 #[derive(Resource)]
 struct Score {
@@ -179,7 +181,7 @@ fn setup(
                 color: text_color,
             },
         )
-        .with_text_alignment(TextAlignment::CENTER)
+        .with_text_alignment(TextAlignment::TOP_CENTER)
         .with_style(Style {
             position_type: PositionType::Absolute,
             position: UiRect {
@@ -319,7 +321,7 @@ fn update_time(time: Res<Time>, mut time_counter: Local<GameTime>, mut query: Qu
     for mut text in &mut query {
         time_counter.value = time_counter.value + time.delta_seconds();
 
-        text.sections[0].value = format!("{:.2}", time_counter.value);
+        text.sections[0].value = format!("{:.1}", time_counter.value);
     }
 }
 
@@ -435,9 +437,7 @@ fn manage_collisions(
     for event in collision_event_reader.iter() {
         match event {
             CollisionEvent(entity_a, entity_b) => {
-                let mut entity_a = entity_a;
                 let mut collide_a = None;
-                let mut entity_b = entity_b;
                 let mut collide_b = None;
                 for (entity, collide_type) in query.iter_mut() {
                     if &entity == entity_a {
@@ -458,6 +458,9 @@ fn manage_collisions(
                     (Some(CollideType::Pickup), Some(CollideType::Orb)) => {
                         pickup_event_writer.send(PickupCollision(*entity_a));
                     },
+                    (Some(CollideType::Pickup), Some(CollideType::Pickup)) => {
+                        
+                    }
                     _ => {
                         println!("unknown collision")
                     }
@@ -471,6 +474,7 @@ fn manage_collisions(
 fn handle_pickup_collision(
     windows: Res<Windows>,
     size: Res<Size>,
+    mut speed: ResMut<Speed>,
     mut event_reader: EventReader<PickupCollision>,
     mut query: Query<(Entity, &mut Transform), With<Pickup>>,
 )
@@ -488,6 +492,9 @@ fn handle_pickup_collision(
                     rng.gen_range(
                         size.pickup - window.height()/2. .. -size.pickup + window.height()/2.
                     );
+                speed.orb = speed.orb + window.width()/1000.;
+                speed.pickup = speed.pickup + window.width()/1000.;
+                speed.star = speed.star + window.width()/1000.;
 
             }
          }
