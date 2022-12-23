@@ -408,7 +408,7 @@ fn collision_detection(
             //to avoid duplicate calculations and events
             if entity_a < entity_b {
                 let distance = transform_a.translation - transform_b.translation;
-                if distance.length() <= collider_a.0 || distance.length() <= collider_b.0 {
+                if distance.length() <= collider_a.0 + collider_b.0 {
                     //to enforce order as player < pickup < orb for easier handling
                     if collide_type_a < collide_type_b {
                         event_writer.send(CollisionEvent(entity_a, entity_b));
