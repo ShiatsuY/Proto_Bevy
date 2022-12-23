@@ -33,17 +33,28 @@ fn main() {
         .insert_resource(Volume{
             value: 50,
         })
+        .add_state(GameState::Game)
         .add_startup_system(setup)
-        .add_system(toggle_cursor)
-        .add_system(bevy::window::close_on_esc)
-        .add_system(movement)
-        .add_system(orb_movement)
-        .add_system(increase_size)
+        .add_system_set(
+            SystemSet::on_update(GameState::Game)
+                .with_system(movement)
+                .with_system(orb_movement)
+                //.with_system(increase_size)
+                .with_system(collision)
+                .with_system(update_time)
+                .with_system(update_score)
+        )
+        //.add_system(toggle_cursor)
         .add_system(move_stars)
-        .add_system(collision)
-        .add_system(display_time)
-        .add_system(update_score)
+        .add_system(toggle_state)
+        .add_system(bevy::window::close_on_esc)
         .run();
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+enum GameState {
+    Game,
+    Pause,
 }
 
 #[derive(Component)]
@@ -269,7 +280,7 @@ fn setup(
         });
 }
 
-fn display_time(time: Res<Time>, mut query: Query<&mut Text, With<TimeText>>){
+fn update_time(time: Res<Time>, mut query: Query<&mut Text, With<TimeText>>){
     for mut text in &mut query {
         let seconds = time.elapsed_seconds();
 
@@ -280,6 +291,15 @@ fn display_time(time: Res<Time>, mut query: Query<&mut Text, With<TimeText>>){
 fn update_score(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>){
     for mut text in &mut query {
         text.sections[0].value = score.value.to_string();
+    }
+}
+
+fn toggle_state(input: Res<Input<KeyCode>>, mut state: ResMut<State<GameState>>) {
+    if input.just_pressed(KeyCode::Space) {
+        match state.current() {
+            GameState::Game => {state.set(GameState::Pause).unwrap();}
+            GameState::Pause => {state.set(GameState::Game).unwrap();}
+        }
     }
 }
 
