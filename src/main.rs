@@ -106,6 +106,18 @@ struct Volume {
     value: i32,
 }
 
+#[derive(Default)]
+struct GameTime {
+    value: f32,
+}
+impl GameTime {
+    pub fn default() -> GameTime {
+        GameTime {
+            value: 0.0,
+        }
+    }
+}
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -299,11 +311,11 @@ fn setup(
         });
 }
 
-fn update_time(time: Res<Time>, mut query: Query<&mut Text, With<TimeText>>){
+fn update_time(time: Res<Time>, mut time_counter: Local<GameTime>, mut query: Query<&mut Text, With<TimeText>>){
     for mut text in &mut query {
-        let seconds = time.elapsed_seconds();
+        time_counter.value = time_counter.value + time.delta_seconds();
 
-        text.sections[0].value = format!("{:.2}", seconds);
+        text.sections[0].value = format!("{:.2}", time_counter.value);
     }
 }
 
