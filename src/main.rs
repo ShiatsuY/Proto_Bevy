@@ -48,7 +48,7 @@ fn main() {
                 .with_system(handle_pickup_collision.after(manage_collisions))
                 .with_system(update_time)
                 .with_system(update_score)
-                .with_system(move_stars)
+                .with_system(move_scene)
         )
         //.add_system(toggle_cursor)
         .add_system(toggle_state)
@@ -492,10 +492,8 @@ fn handle_pickup_collision(
                     rng.gen_range(
                         size.pickup - window.height()/2. .. -size.pickup + window.height()/2.
                     );
-                speed.orb = speed.orb + window.width()/1000.;
-                speed.pickup = speed.pickup + window.width()/1000.;
-                speed.star = speed.star + window.width()/1000.;
-
+                speed.orb += window.width()/2000.; // this one is weird, better trigger only when player collides?
+                
             }
          }
     }
@@ -533,14 +531,14 @@ fn increase_size(
     }
 }
 
-fn move_stars(
+fn move_scene(
     size: Res<Size>,
     speed: Res<Speed>,
     mut windows: ResMut<Windows>,
-    mut query: Query<&mut Transform, With<Star>>,
+    mut s_query: Query<&mut Transform, With<Star>>,
 ) {
     let window = windows.get_primary_mut().unwrap();
-    for mut transform in query.iter_mut() {
+    for mut transform in s_query.iter_mut() {
         if transform.translation.x + size.star > -window.width()/2. {
             transform.translation.x -= speed.star;
         } else {
