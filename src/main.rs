@@ -35,14 +35,16 @@ fn main() {
         })
         .add_state(GameState::Game)
         .add_event::<CollisionEvent>()
+        .add_event::<PickupCollision>()
         .add_startup_system(setup)
         .add_system_set(
             SystemSet::on_update(GameState::Game)
                 .with_system(movement)
                 .with_system(orb_movement)
                 //.with_system(increase_size)
-                .with_system(collision_detection)
-                .with_system(collision_handling.after(collision_detection))
+                .with_system(detect_collisions)
+                .with_system(manage_collisions.after(detect_collisions))
+                .with_system(handle_pickup_collision.after(manage_collisions))
                 .with_system(update_time)
                 .with_system(update_score)
                 .with_system(move_stars)
@@ -60,6 +62,8 @@ enum GameState {
 }
 
 struct CollisionEvent(Entity, Entity);
+
+struct PickupCollision(Entity);
 
 #[derive(Component)]
 struct Player;
@@ -398,7 +402,7 @@ fn collision(
     }
 }
 
-fn collision_detection(
+fn detect_collisions(
     collision_query: Query<(Entity, &Collider, &CollideType, &Transform)>,
     mut event_writer: EventWriter<CollisionEvent>,
 )
@@ -421,45 +425,38 @@ fn collision_detection(
     }
 }
 
-fn collision_handling(
-    windows: Res<Windows>,
-    size: Res<Size>,
+fn manage_collisions(
     mut score: ResMut<Score>,
-    mut event_reader: EventReader<CollisionEvent>,
-    mut query: Query<(Entity, &CollideType, &mut Transform)>,
+    mut collision_event_reader: EventReader<CollisionEvent>,
+    mut pickup_event_writer: EventWriter<PickupCollision>,
+    mut query: Query<(Entity, &CollideType)>,
 )
 {
-    for event in event_reader.iter() {
+    for event in collision_event_reader.iter() {
         match event {
             CollisionEvent(entity_a, entity_b) => {
+                let mut entity_a = entity_a;
                 let mut collide_a = None;
-                let mut transform_a = None;
+                let mut entity_b = entity_b;
                 let mut collide_b = None;
-                let mut transform_b = None;
-                for (entity, collide_type, mut transform) in query.iter_mut() {
+                for (entity, collide_type) in query.iter_mut() {
                     if &entity == entity_a {
                         collide_a = Some(collide_type);
-                        transform_a = Some(transform)
                     } else if &entity == entity_b {
                         collide_b = Some(collide_type);
-                        transform_b = Some(transform)
                     }
                 }
                 match (collide_a, collide_b) {
                     (Some(CollideType::Player), Some(CollideType::Pickup)) => {
                         //println!("player hit pickup")
-                        let window = windows.get_primary().unwrap();
-                        let mut rng = rand::thread_rng();
-                        let mut b = transform_b.unwrap();
-                        b.translation.x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
-                        b.translation.y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
+                        pickup_event_writer.send(PickupCollision(*entity_b));
                         score.value += 1;
                     },
                     (Some(CollideType::Player), Some(CollideType::Orb)) => {
                         //println!("player hit orb")
                     },
                     (Some(CollideType::Pickup), Some(CollideType::Orb)) => {
-                        //println!("pickup hit orb")
+                        pickup_event_writer.send(PickupCollision(*entity_a));
                     },
                     _ => {
                         println!("unknown collision")
@@ -468,6 +465,32 @@ fn collision_handling(
 
             }
         }
+    }
+}
+
+fn handle_pickup_collision(
+    windows: Res<Windows>,
+    size: Res<Size>,
+    mut event_reader: EventReader<PickupCollision>,
+    mut query: Query<(Entity, &mut Transform), With<Pickup>>,
+)
+{
+    let window = windows.get_primary().unwrap();
+    let mut rng = rand::thread_rng();
+    for PickupCollision(event_entity) in event_reader.iter() {
+        for (query_entity, mut transform) in query.iter_mut() {
+            if event_entity == &query_entity {
+                transform.translation.x =
+                    rng.gen_range(
+                        size.pickup - window.width()/2. .. -size.pickup + window.width()/2.
+                    );
+                transform.translation.y =
+                    rng.gen_range(
+                        size.pickup - window.height()/2. .. -size.pickup + window.height()/2.
+                    );
+
+            }
+         }
     }
 }
 
