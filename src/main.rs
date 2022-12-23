@@ -27,6 +27,12 @@ fn main() {
             star: 0.,
             orb: 0.,
         })
+        .insert_resource(Score{
+            value: 0,
+        })
+        .insert_resource(Volume{
+            value: 50,
+        })
         .add_startup_system(setup)
         .add_system(toggle_cursor)
         .add_system(bevy::window::close_on_esc)
@@ -35,6 +41,8 @@ fn main() {
         .add_system(increase_size)
         .add_system(move_stars)
         .add_system(collision)
+        .add_system(display_time)
+        .add_system(update_score)
         .run();
 }
 
@@ -46,6 +54,12 @@ struct Pickup;
 struct Orb;
 #[derive(Component)]
 struct Star;
+#[derive(Component)]
+struct ScoreText;
+#[derive(Component)]
+struct TimeText;
+#[derive(Component)]
+struct VolumeText;
 
 #[derive(Resource)]
 struct Size {
@@ -60,6 +74,14 @@ struct Speed {
     star: f32,
     orb: f32,
 }
+#[derive(Resource)]
+struct Score {
+    value: i32,
+}
+#[derive(Resource)]
+struct Volume {
+    value: i32,
+}
 
 fn setup(
     mut commands: Commands,
@@ -68,6 +90,9 @@ fn setup(
     mut windows: ResMut<Windows>,
     mut size: ResMut<Size>,
     mut speed: ResMut<Speed>,
+    score: Res<Score>,
+    volume: Res<Volume>,
+    asset_server: Res<AssetServer>,
 ) {
     windows.primary_mut().set_cursor_visibility(false);
     
@@ -75,6 +100,80 @@ fn setup(
 
     let window = windows.get_primary_mut().unwrap();
     let mut rng = rand::thread_rng();
+
+    let text_color = Color::Rgba {
+        red: 255.,
+        green: 255.,
+        blue: 255.,
+        alpha: 0.5,
+    };
+
+    // UI
+    commands.spawn((
+        TextBundle::from_section(
+            score.value.to_string(),
+            TextStyle {
+                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                font_size: 30.0,
+                color: text_color,
+            },
+        )
+        .with_text_alignment(TextAlignment::CENTER)
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            position: UiRect {
+                bottom: Val::Px(window.height()/64.),
+                left: Val::Px(window.width()/16.),
+                ..default()
+            },
+            ..default()
+        }),
+        ScoreText,
+    ));
+
+    commands.spawn((
+        TextBundle::from_section(
+            "",
+            TextStyle {
+                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                font_size: 30.0,
+                color: text_color,
+            },
+        )
+        .with_text_alignment(TextAlignment::CENTER)
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            position: UiRect {
+                bottom: Val::Px(window.height()/64.),
+                left: Val::Px(window.width()/2. - 50.), // hardcoded :<
+                ..default()
+            },
+            ..default()
+        }),
+        TimeText,
+    ));
+
+    commands.spawn((
+        TextBundle::from_section(
+            volume.value.to_string() + "%",
+            TextStyle {
+                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                font_size: 30.0,
+                color: text_color,
+            },
+        )
+        .with_text_alignment(TextAlignment::CENTER)
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            position: UiRect {
+                bottom: Val::Px(window.height()/64.),
+                right: Val::Px(window.width()/16.),
+                ..default()
+            },
+            ..default()
+        }),
+        VolumeText,
+    ));
 
     // Pickups
     size.pickup = window.width() * 0.01;
@@ -150,18 +249,38 @@ fn setup(
     speed.player = window.width()/3.;
     commands.spawn(MaterialMesh2dBundle {
         mesh: meshes.add(shape::Circle::new(size.player).into()).into(),
-        material: materials.add(ColorMaterial::from(Color::YELLOW)),
+        material: materials.add(ColorMaterial::from(Color::WHITE)),
         transform: Transform::from_translation(Vec3::new(p_x, p_y, 3.)),
         ..default()
     }).insert(Player)
         .with_children(|parent| {
             parent.spawn(MaterialMesh2dBundle {
-                mesh: meshes.add(shape::Circle::new(size.orb * 0.01).into()).into(),
-                material: materials.add(ColorMaterial::from(Color::WHITE)),
+                mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
+                material: materials.add(ColorMaterial::from(Color::BLUE)),
                 transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
                 ..default()
             });
+            parent.spawn(MaterialMesh2dBundle {
+                mesh: meshes.add(shape::Circle::new(size.player * 0.1).into()).into(),
+                material: materials.add(ColorMaterial::from(Color::WHITE)),
+                transform: Transform::from_translation(Vec3::new(0.,0.,5.)),
+                ..default()
+            });
         });
+}
+
+fn display_time(time: Res<Time>, mut query: Query<&mut Text, With<TimeText>>){
+    for mut text in &mut query {
+        let seconds = time.elapsed_seconds();
+
+        text.sections[0].value = format!("{:.2}", seconds);
+    }
+}
+
+fn update_score(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>){
+    for mut text in &mut query {
+        text.sections[0].value = score.value.to_string();
+    }
 }
 
 fn toggle_cursor(input: Res<Input<KeyCode>>, mut windows: ResMut<Windows>) {
@@ -173,6 +292,7 @@ fn toggle_cursor(input: Res<Input<KeyCode>>, mut windows: ResMut<Windows>) {
 
 fn collision(
     windows: Res<Windows>,
+    mut score: ResMut<Score>,
     mut speed: ResMut<Speed>,
     size: Res<Size>,
     player_q: Query<&Transform, (With<Player>, Without<Orb>, Without<Pickup>)>,
@@ -191,8 +311,9 @@ fn collision(
             if a > (((x*x) + (y*y)) as f32).sqrt(){
                 speed.orb = 0.0;
                 speed.player = 0.0;
+                // die or lose 1 live
             }
-
+            // collision orb - pickup
             for mut transform_pick in pick_q.iter_mut(){
                 let a2 = size.pickup + size.orb;
                 let x2 = transform_pick.translation.x - transform_o.translation.x;
@@ -219,6 +340,8 @@ fn collision(
                 let mut rng = rand::thread_rng();
                 transform_pick.translation.x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
                 transform_pick.translation.y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
+                // increment counter
+                score.value += 1;
             }
         }
     }
@@ -241,8 +364,12 @@ fn increase_size(
         if input.just_pressed(KeyCode::Space) {
             if speed.orb == 0.0 {
                 speed.orb = window.width()/8.;
+                speed.player = window.width()/3.;
+                speed.star = window.width()/2000.;
             } else {
                 speed.orb = 0.0;
+                speed.player = 0.0;
+                speed.star = 0.0;
             }
             size.player = size.player + window.height()/4800.;
             commands
