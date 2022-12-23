@@ -34,13 +34,15 @@ fn main() {
             value: 50,
         })
         .add_state(GameState::Game)
+        .add_event::<CollisionEvent>()
         .add_startup_system(setup)
         .add_system_set(
             SystemSet::on_update(GameState::Game)
                 .with_system(movement)
                 .with_system(orb_movement)
                 //.with_system(increase_size)
-                .with_system(collision)
+                .with_system(collision_detection)
+                .with_system(collision_handling.after(collision_detection))
                 .with_system(update_time)
                 .with_system(update_score)
         )
@@ -57,6 +59,8 @@ enum GameState {
     Pause,
 }
 
+struct CollisionEvent(Entity, Entity);
+
 #[derive(Component)]
 struct Player;
 #[derive(Component)]
@@ -65,6 +69,14 @@ struct Pickup;
 struct Orb;
 #[derive(Component)]
 struct Star;
+#[derive(Component)]
+struct Collider(f32);
+#[derive(Component, Eq, PartialEq, Ord, PartialOrd)]
+enum CollideType {
+    Player,
+    Pickup,
+    Orb,
+}
 #[derive(Component)]
 struct ScoreText;
 #[derive(Component)]
@@ -199,7 +211,9 @@ fn setup(
             transform: Transform::from_translation(Vec3::new(x, y, 1.)),
             ..default()
         })
-        .insert(Pickup)
+            .insert(Pickup)
+            .insert(CollideType::Pickup)
+            .insert(Collider(size.pickup))
         .with_children(|parent| {
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.pickup).into()).into(),
@@ -224,7 +238,9 @@ fn setup(
             transform: Transform::from_translation(Vec3::new(x, y, 2.)),
             ..default()
         })
-        .insert(Orb)
+            .insert(Orb)
+            .insert(CollideType::Orb)
+            .insert(Collider(size.orb))
         .with_children(|parent| {
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
@@ -263,7 +279,10 @@ fn setup(
         material: materials.add(ColorMaterial::from(Color::WHITE)),
         transform: Transform::from_translation(Vec3::new(p_x, p_y, 3.)),
         ..default()
-    }).insert(Player)
+    })
+        .insert(Player)
+        .insert(CollideType::Player)
+        .insert(Collider(size.player))
         .with_children(|parent| {
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
@@ -365,8 +384,70 @@ fn collision(
             }
         }
     }
+}
 
+fn collision_detection(
+    collision_query: Query<(Entity, &Collider, &CollideType, &Transform)>,
+    mut event_writer: EventWriter<CollisionEvent>,
+)
+{
+    for (entity_a, collider_a, collide_type_a, transform_a) in collision_query.iter() {
+        for (entity_b, collider_b, collide_type_b, transform_b) in collision_query.iter() {
+            //to avoid duplicate calculations and events
+            if entity_a < entity_b {
+                let distance = transform_a.translation - transform_b.translation;
+                if distance.length() <= collider_a.0 || distance.length() <= collider_b.0 {
+                    //to enforce order as player < pickup < orb for easier handling
+                    if collide_type_a < collide_type_b {
+                        event_writer.send(CollisionEvent(entity_a, entity_b));
+                    } else {
+                        event_writer.send(CollisionEvent(entity_b, entity_a));
+                    }
+                }
+            }
+        }
+    }
+}
 
+fn collision_handling(
+    mut event_reader: EventReader<CollisionEvent>,
+    mut query: Query<(Entity, &CollideType, &mut Transform)>,
+)
+{
+    for event in event_reader.iter() {
+        match event {
+            CollisionEvent(entity_a, entity_b) => {
+                let mut collide_a = None;
+                let mut transform_a = None;
+                let mut collide_b = None;
+                let mut transform_b = None;
+                for (entity, collide_type, mut transform) in query.iter_mut() {
+                    if &entity == entity_a {
+                        collide_a = Some(collide_type);
+                        transform_a = Some(transform)
+                    } else if &entity == entity_b {
+                        collide_b = Some(collide_type);
+                        transform_b = Some(transform)
+                    }
+                }
+                match (collide_a, collide_b) {
+                    (Some(CollideType::Player), Some(CollideType::Pickup)) => {
+                        println!("player hit pickup")
+                    },
+                    (Some(CollideType::Player), Some(CollideType::Orb)) => {
+                        println!("player hit orb")
+                    },
+                    (Some(CollideType::Pickup), Some(CollideType::Orb)) => {
+                        println!("pickup hit orb")
+                    },
+                    _ => {
+                        println!("unknown collision")
+                    }
+                }
+
+            }
+        }
+    }
 }
 
 fn increase_size(
