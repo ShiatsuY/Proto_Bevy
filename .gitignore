@@ -1,5 +1,5 @@
 Cargo.lock
-.target/
+target/
 
 # Created by https://www.toptal.com/developers/gitignore/api/intellij
 # Edit at https://www.toptal.com/developers/gitignore?templates=intellij
@@ -118,4 +118,3 @@ fabric.properties
 .idea/**/azureSettings.xml
 
 # End of https://www.toptal.com/developers/gitignore/api/intellij
-
