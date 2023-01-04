@@ -1,6 +1,7 @@
 use bevy::{
     prelude::*,
-    sprite::MaterialMesh2dBundle
+    sprite::MaterialMesh2dBundle,
+    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
 };
 use rand::Rng;
 
@@ -34,6 +35,11 @@ fn main() {
         .insert_resource(Volume{
             value: 50,
         })
+        .insert_resource(OrbsRGB{
+            r: 255.,
+            g: 0.,
+            b: 0.,
+        })
         .add_state(GameState::Game)
         .add_event::<CollisionEvent>()
         .add_event::<PickupCollision>()
@@ -53,11 +59,14 @@ fn main() {
         //.add_system(toggle_cursor)
         .add_system(toggle_state)
         .add_system(bevy::window::close_on_esc)
+        //.add_plugin(LogDiagnosticsPlugin::default())
+        //.add_plugin(FrameTimeDiagnosticsPlugin::default())
         .run();
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum GameState {
+    Init,
     Game,
     Pause,
 }
@@ -110,6 +119,13 @@ struct Score {
 #[derive(Resource)]
 struct Volume {
     value: i32,
+}
+
+#[derive(Resource)]
+struct OrbsRGB {
+    r: f32,
+    g: f32,
+    b: f32,
 }
 
 #[derive(Default)]
@@ -186,7 +202,7 @@ fn setup(
             position_type: PositionType::Absolute,
             position: UiRect {
                 bottom: Val::Px(window.height()/64.),
-                left: Val::Px(window.width()/2. - 50.), // hardcoded :<
+                left: Val::Px(window.width()/2. - window.width()/25.), // hardcoded :<
                 ..default()
             },
             ..default()
@@ -308,12 +324,6 @@ fn setup(
                 transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
                 ..default()
             });
-            parent.spawn(MaterialMesh2dBundle {
-                mesh: meshes.add(shape::Circle::new(size.player * 0.1).into()).into(),
-                material: materials.add(ColorMaterial::from(Color::WHITE)),
-                transform: Transform::from_translation(Vec3::new(0.,0.,5.)),
-                ..default()
-            });
         });
 }
 
@@ -334,6 +344,7 @@ fn update_score(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>)
 fn toggle_state(input: Res<Input<KeyCode>>, mut state: ResMut<State<GameState>>) {
     if input.just_pressed(KeyCode::Space) {
         match state.current() {
+            GameState::Init => {state.set(GameState::Init).unwrap();}
             GameState::Game => {state.set(GameState::Pause).unwrap();}
             GameState::Pause => {state.set(GameState::Game).unwrap();}
         }
@@ -429,9 +440,17 @@ fn detect_collisions(
 
 fn manage_collisions(
     mut score: ResMut<Score>,
+    mut speed: ResMut<Speed>,
+    mut rgb: ResMut<OrbsRGB>,
+    size: Res<Size>,
+    windows: Res<Windows>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
     mut collision_event_reader: EventReader<CollisionEvent>,
     mut pickup_event_writer: EventWriter<PickupCollision>,
     mut query: Query<(Entity, &CollideType)>,
+    mut o_query: Query<Entity, With<Orb>>,
 )
 {
     for event in collision_event_reader.iter() {
@@ -448,17 +467,64 @@ fn manage_collisions(
                 }
                 match (collide_a, collide_b) {
                     (Some(CollideType::Player), Some(CollideType::Pickup)) => {
-                        //println!("player hit pickup")
+                        //player hit pickup
                         pickup_event_writer.send(PickupCollision(*entity_b));
                         score.value += 1;
+                        
+                        commands
+                            .entity(*entity_a)
+                            .with_children(|parent| {
+                                parent.spawn(MaterialMesh2dBundle {
+                                    mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
+                                    material: materials.add(ColorMaterial::from(Color::BLUE)),
+                                    transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
+                                    ..default()
+                                });
+                                parent.spawn(MaterialMesh2dBundle {
+                                    mesh: meshes.add(shape::Circle::new(size.player * 0.0095 * score.value as f32).into()).into(),
+                                    material: materials.add(ColorMaterial::from(Color::WHITE)),
+                                    transform: Transform::from_translation(Vec3::new(0.,0.,5.)),
+                                    ..default()
+                                });
+                            });
+                        
+                        let window = windows.get_primary().unwrap();
+                        // window.width()/8.
+                        speed.orb += window.width()/800.;
+                        //println!("{}", speed.orb);
+                        rgb.r -= 0.01;
+                        rgb.b += 0.01;
+
+                        let new_rgb = Color::Rgba {
+                            red: rgb.r,
+                            green: rgb.g,
+                            blue: rgb.b,
+                            alpha: 1.0,
+                        };
+
+                        for o in o_query.iter_mut(){
+                            commands
+                                .entity(o)
+                                .with_children(|parent| {
+                                    parent.spawn(MaterialMesh2dBundle {
+                                        mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
+                                        material: materials.add(ColorMaterial::from(new_rgb)),
+                                        transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
+                                        ..default()
+                                    });
+                                });
+                        }
                     },
                     (Some(CollideType::Player), Some(CollideType::Orb)) => {
-                        //println!("player hit orb")
+                        //player hit orb
                     },
                     (Some(CollideType::Pickup), Some(CollideType::Orb)) => {
+                        //pickup hit orb
                         pickup_event_writer.send(PickupCollision(*entity_a));
                     },
                     (Some(CollideType::Pickup), Some(CollideType::Pickup)) => {
+                        //pickup hit pickup
+                        //maybe relocate pickup
                         
                     }
                     _ => {
@@ -476,7 +542,7 @@ fn handle_pickup_collision(
     size: Res<Size>,
     mut speed: ResMut<Speed>,
     mut event_reader: EventReader<PickupCollision>,
-    mut query: Query<(Entity, &mut Transform), With<Pickup>>,
+    mut query: Query<(Entity, &mut Transform), (With<Pickup>, Without<Orb>)>,
 )
 {
     let window = windows.get_primary().unwrap();
@@ -492,8 +558,6 @@ fn handle_pickup_collision(
                     rng.gen_range(
                         size.pickup - window.height()/2. .. -size.pickup + window.height()/2.
                     );
-                speed.orb += window.width()/2000.; // this one is weird, better trigger only when player collides?
-                
             }
          }
     }
