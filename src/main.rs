@@ -36,7 +36,7 @@ fn main() {
             value: 50,
         })
         .insert_resource(OrbsRGB{
-            r: 255.,
+            r: 1.,
             g: 0.,
             b: 0.,
         })
