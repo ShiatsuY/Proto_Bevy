@@ -40,7 +40,7 @@ fn main() {
             g: 0.,
             b: 0.,
         })
-        .add_state(GameState::Game)
+        .add_state(GameState::Init)
         .add_event::<CollisionEvent>()
         .add_event::<PickupCollision>()
         .add_startup_system(setup)
@@ -162,7 +162,7 @@ fn setup(
         red: 255.,
         green: 255.,
         blue: 255.,
-        alpha: 0.5,
+        alpha: 0.0,
     };
 
     // UI
@@ -243,6 +243,9 @@ fn setup(
             mesh: meshes.add(shape::Circle::new(size.pickup * 0.5).into()).into(),
             material: materials.add(ColorMaterial::from(Color::WHITE)),
             transform: Transform::from_translation(Vec3::new(x, y, 1.)),
+            visibility: Visibility {
+                is_visible: false,
+            },
             ..default()
         })
             .insert(Pickup)
@@ -298,6 +301,9 @@ fn setup(
             mesh: meshes.add(shape::Circle::new(size.star).into()).into(),
             material: materials.add(ColorMaterial::from(Color::WHITE)),
             transform: Transform::from_translation(Vec3::new(x, y, 0.)),
+            visibility: Visibility {
+                is_visible: false,
+            },
             ..default()
         })
         .insert(Star);
@@ -312,6 +318,9 @@ fn setup(
         mesh: meshes.add(shape::Circle::new(size.player).into()).into(),
         material: materials.add(ColorMaterial::from(Color::WHITE)),
         transform: Transform::from_translation(Vec3::new(p_x, p_y, 3.)),
+        visibility: Visibility {
+            is_visible: false,
+        },
         ..default()
     })
         .insert(Player)
@@ -341,12 +350,48 @@ fn update_score(score: Res<Score>, mut query: Query<&mut Text, With<ScoreText>>)
     }
 }
 
-fn toggle_state(input: Res<Input<KeyCode>>, mut state: ResMut<State<GameState>>) {
+fn toggle_state(
+    input: Res<Input<KeyCode>>, 
+    mut state: ResMut<State<GameState>>, 
+    mut query: Query<&mut Visibility>,
+    mut t_query: Query<&mut Text>,
+) {
     if input.just_pressed(KeyCode::Space) {
         match state.current() {
-            GameState::Init => {state.set(GameState::Init).unwrap();}
-            GameState::Game => {state.set(GameState::Pause).unwrap();}
-            GameState::Pause => {state.set(GameState::Game).unwrap();}
+            GameState::Init => {
+                state.set(GameState::Game).unwrap();
+                    for mut vis in query.iter_mut(){
+                        vis.is_visible = true;
+                    }
+                    for mut text in t_query.iter_mut(){
+                        let temp = text.sections[0].style.color;
+                        text.sections[0].style.color = Color::Rgba {
+                            red: 255.,
+                            green: 255.,
+                            blue: 255.,
+                            alpha: 0.5,
+                        };
+                    }
+                    // this does not work!!!!! 
+                    // do it with visibility
+                }
+            GameState::Game => {
+                state.set(GameState::Pause).unwrap();
+                for mut text in t_query.iter_mut(){
+                    text.sections[0].style.color = Color::rgb(0.0, 0.0, 0.0);
+                }
+            }
+            GameState::Pause => {
+                state.set(GameState::Game).unwrap();
+                for mut text in t_query.iter_mut(){
+                    text.sections[0].style.color = Color::Rgba {
+                        red: 255.,
+                        green: 255.,
+                        blue: 255.,
+                        alpha: 0.5,
+                    };
+                }
+            }
         }
     }
 }
