@@ -1,7 +1,7 @@
 use bevy::{
     prelude::*,
     sprite::MaterialMesh2dBundle,
-    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    //diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
 };
 use rand::Rng;
 
@@ -44,6 +44,10 @@ fn main() {
         .add_event::<CollisionEvent>()
         .add_event::<PickupCollision>()
         .add_startup_system(setup)
+        .add_system_set(
+            SystemSet::on_update(GameState::Init)
+                .with_system(ui_invis)
+        )
         .add_system_set(
             SystemSet::on_update(GameState::Game)
                 .with_system(movement)
@@ -162,10 +166,11 @@ fn setup(
         red: 255.,
         green: 255.,
         blue: 255.,
-        alpha: 0.0,
+        alpha: 0.5,
     };
 
     // UI
+
     commands.spawn((
         TextBundle::from_section(
             score.value.to_string(),
@@ -190,7 +195,7 @@ fn setup(
 
     commands.spawn((
         TextBundle::from_section(
-            "",
+            "0.0",
             TextStyle {
                 font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                 font_size: 30.0,
@@ -263,7 +268,7 @@ fn setup(
 
     // Orbs
     size.orb = window.width() * 0.1;
-    speed.orb = window.width()/8.; // window.width() / 512.;
+    speed.orb = window.width()/8.;
 
     for i in 0..4{
         let x = (window.width() + size.orb + i as f32 * size.orb * 2. + i as f32 * size.orb) - window.width()/2.;
@@ -292,7 +297,6 @@ fn setup(
     size.star = window.width()/1000.;
     speed.star = window.width()/2000.;
     let stars = ((window.width()/window.height())*100.).floor();
-    //println!("{}", stars);
 
     for _i in 0 .. stars as u8{
         let x = rng.gen_range(size.star - window.width()/2. .. -size.star + window.width()/2.);
@@ -336,6 +340,12 @@ fn setup(
         });
 }
 
+fn ui_invis(mut query: Query<&mut Visibility, With<Text>>){
+    for mut vis in query.iter_mut(){
+        vis.is_visible = false;
+    }
+}
+
 fn update_time(time: Res<Time>, mut time_counter: Local<GameTime>, mut query: Query<&mut Text, With<TimeText>>){
     for mut text in &mut query {
         time_counter.value = time_counter.value + time.delta_seconds();
@@ -354,7 +364,6 @@ fn toggle_state(
     input: Res<Input<KeyCode>>, 
     mut state: ResMut<State<GameState>>, 
     mut query: Query<&mut Visibility>,
-    mut t_query: Query<&mut Text>,
 ) {
     if input.just_pressed(KeyCode::Space) {
         match state.current() {
@@ -363,47 +372,25 @@ fn toggle_state(
                     for mut vis in query.iter_mut(){
                         vis.is_visible = true;
                     }
-                    for mut text in t_query.iter_mut(){
-                        let temp = text.sections[0].style.color;
-                        text.sections[0].style.color = Color::Rgba {
-                            red: 255.,
-                            green: 255.,
-                            blue: 255.,
-                            alpha: 0.5,
-                        };
-                    }
-                    // this does not work!!!!! 
-                    // do it with visibility
                 }
             GameState::Game => {
                 state.set(GameState::Pause).unwrap();
-                for mut text in t_query.iter_mut(){
-                    text.sections[0].style.color = Color::rgb(0.0, 0.0, 0.0);
-                }
             }
             GameState::Pause => {
                 state.set(GameState::Game).unwrap();
-                for mut text in t_query.iter_mut(){
-                    text.sections[0].style.color = Color::Rgba {
-                        red: 255.,
-                        green: 255.,
-                        blue: 255.,
-                        alpha: 0.5,
-                    };
-                }
             }
         }
     }
 }
 
-fn toggle_cursor(input: Res<Input<KeyCode>>, mut windows: ResMut<Windows>) {
+fn _toggle_cursor(input: Res<Input<KeyCode>>, mut windows: ResMut<Windows>) {
     let window = windows.primary_mut();
     if input.just_pressed(KeyCode::Space) {
         window.set_cursor_visibility(!window.cursor_visible());
     }
 }
 
-fn collision(
+fn _collision(
     windows: Res<Windows>,
     mut score: ResMut<Score>,
     mut speed: ResMut<Speed>,
@@ -496,6 +483,7 @@ fn manage_collisions(
     mut pickup_event_writer: EventWriter<PickupCollision>,
     mut query: Query<(Entity, &CollideType)>,
     mut o_query: Query<Entity, With<Orb>>,
+    mut pick_q: Query<Entity, With<Pickup>>
 )
 {
     for event in collision_event_reader.iter() {
@@ -515,6 +503,13 @@ fn manage_collisions(
                         //player hit pickup
                         pickup_event_writer.send(PickupCollision(*entity_b));
                         score.value += 1;
+
+                        if score.value >= 10 {
+                            // delete all pickups
+                            for mut pick in pick_q.iter_mut(){
+                                commands.entity(pick).despawn_recursive();
+                            }
+                        } else {
                         
                         commands
                             .entity(*entity_a)
@@ -558,7 +553,7 @@ fn manage_collisions(
                                         ..default()
                                     });
                                 });
-                        }
+                        }}
                     },
                     (Some(CollideType::Player), Some(CollideType::Orb)) => {
                         //player hit orb
@@ -608,7 +603,7 @@ fn handle_pickup_collision(
     }
 }
 
-fn increase_size(
+fn _increase_size(
     input: Res<Input<KeyCode>>,
     windows: Res<Windows>,
     mut size: ResMut<Size>,
