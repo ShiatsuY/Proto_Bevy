@@ -40,25 +40,41 @@ fn main() {
             g: 0.,
             b: 0.,
         })
-        .add_state(GameState::Init)
+        
         .add_event::<CollisionEvent>()
         .add_event::<PickupCollision>()
         .add_startup_system(setup)
+        .add_state(GameState::Init)
+        .add_system(play_music)
         .add_system_set(
-            SystemSet::on_update(GameState::Init)
+            SystemSet::on_enter(GameState::Init)
                 .with_system(ui_invis)
+                .with_system(setup_intro)
+        )
+        .add_system_set(
+            SystemSet::on_exit(GameState::Init)
+                .with_system(delete_intro)
         )
         .add_system_set(
             SystemSet::on_update(GameState::Game)
                 .with_system(movement)
                 .with_system(orb_movement)
-                //.with_system(increase_size)
                 .with_system(detect_collisions)
                 .with_system(manage_collisions.after(detect_collisions))
                 .with_system(handle_pickup_collision.after(manage_collisions))
                 .with_system(update_time)
                 .with_system(update_score)
                 .with_system(move_scene)
+                .with_system(play_music)
+        )
+        .add_system_set(
+            SystemSet::on_enter(GameState::Dead)
+                .with_system(dead_text)
+        )
+        .add_system_set(
+            SystemSet::on_exit(GameState::Dead)
+                .with_system(delete_dead)
+                .with_system(reset_game)
         )
         //.add_system(toggle_cursor)
         .add_system(toggle_state)
@@ -73,6 +89,7 @@ enum GameState {
     Init,
     Game,
     Pause,
+    Dead
 }
 
 struct CollisionEvent(Entity, Entity);
@@ -101,6 +118,10 @@ struct ScoreText;
 struct TimeText;
 #[derive(Component)]
 struct VolumeText;
+#[derive(Component)]
+struct IntroText;
+#[derive(Component)]
+struct DeadText;
 
 #[derive(Resource)]
 struct Size {
@@ -142,6 +163,68 @@ impl GameTime {
             value: 0.0,
         }
     }
+}
+
+fn reset_game(
+    mut windows: ResMut<Windows>,
+    mut size: ResMut<Size>,
+    mut speed: ResMut<Speed>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut commands: Commands,
+    mut score: ResMut<Score>,
+    mut time: Local<GameTime>,
+    mut player_query: Query<&mut Transform, (With<Player>, Without<Orb>)>,
+    mut orb_query: Query<&mut Transform, (With<Orb>, Without<Player>)>
+) {
+    score.value = 0;
+    time.value = 0.;
+    let mut rng = rand::thread_rng();
+    let window = windows.get_primary_mut().unwrap();
+
+    for mut transform in player_query.iter_mut(){
+        let p_x = -window.width()/4.;
+        let p_y = 0.;
+        transform.translation.x = p_x;
+        transform.translation.y = p_y;
+    }
+    let mut i = 0;
+    for mut transform in orb_query.iter_mut(){
+        let o_x = (window.width() + size.orb + i as f32 * size.orb * 2. + i as f32 * size.orb) - window.width()/2.;
+        let o_y = rng.gen_range(size.orb - window.height()/2. .. -size.orb + window.height()/2.);
+        transform.translation.x = o_x;
+        transform.translation.y = o_y;
+        i += 1;
+    }
+}
+
+fn dead_text(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut windows: ResMut<Windows>,
+) {
+    let window = windows.get_primary_mut().unwrap();
+    let text_color = Color::Rgba {
+        red: 255.,
+        green: 255.,
+        blue: 255.,
+        alpha: 0.5,
+    };
+
+    commands.spawn((
+        Text2dBundle {
+            text: Text::from_section(
+                "Defeat!\nPress Space To Play Again!", 
+                TextStyle {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: window.width()/20.,
+                    color: text_color,
+                })
+                .with_alignment(TextAlignment::CENTER),
+            ..default()
+        },
+        DeadText,
+    ));
 }
 
 fn setup(
@@ -260,7 +343,7 @@ fn setup(
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.pickup).into()).into(),
                 material: materials.add(ColorMaterial::from(Color::BLUE)),
-                transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
+                transform: Transform::from_translation(Vec3::new(0., 0., -1.)),
                 ..default()
             });
         });
@@ -277,7 +360,7 @@ fn setup(
         commands.spawn(MaterialMesh2dBundle {
             mesh: meshes.add(shape::Circle::new(size.orb * 0.975).into()).into(),
             material: materials.add(ColorMaterial::from(Color::BLACK)),
-            transform: Transform::from_translation(Vec3::new(x, y, 2.)),
+            transform: Transform::from_translation(Vec3::new(x, y, 1.)),
             ..default()
         })
             .insert(Orb)
@@ -287,7 +370,7 @@ fn setup(
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
                 material: materials.add(ColorMaterial::from(Color::RED)),
-                transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
+                transform: Transform::from_translation(Vec3::new(0., 0., -1.)),
                 ..default()
             });
         });
@@ -321,7 +404,7 @@ fn setup(
     commands.spawn(MaterialMesh2dBundle {
         mesh: meshes.add(shape::Circle::new(size.player).into()).into(),
         material: materials.add(ColorMaterial::from(Color::WHITE)),
-        transform: Transform::from_translation(Vec3::new(p_x, p_y, 3.)),
+        transform: Transform::from_translation(Vec3::new(p_x, p_y, 0.)),
         visibility: Visibility {
             is_visible: false,
         },
@@ -334,13 +417,59 @@ fn setup(
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
                 material: materials.add(ColorMaterial::from(Color::BLUE)),
-                transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
+                transform: Transform::from_translation(Vec3::new(0., 0., 1.)),
                 ..default()
             });
         });
 }
 
-fn ui_invis(mut query: Query<&mut Visibility, With<Text>>){
+fn setup_intro(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut windows: ResMut<Windows>,
+) {
+    let window = windows.get_primary_mut().unwrap();
+    let text_color = Color::Rgba {
+        red: 255.,
+        green: 255.,
+        blue: 255.,
+        alpha: 0.5,
+    };
+    commands
+        .spawn((
+            Text2dBundle {
+                text: Text::from_section(
+                    "Press Space To Play!", 
+                    TextStyle {
+                        font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                        font_size: window.width()/20.,
+                        color: text_color,
+                    })
+                    .with_alignment(TextAlignment::CENTER),
+                ..default()
+            },
+            IntroText,
+        ));
+        
+}
+
+fn play_music(){
+
+}
+
+fn delete_intro(mut commands: Commands, mut query: Query<Entity, With<IntroText>>){
+    for mut text in query.iter_mut(){
+        commands.entity(text).despawn();
+    }
+}
+
+fn delete_dead(mut commands: Commands, mut query: Query<Entity, With<DeadText>>){
+    for mut text in query.iter_mut(){
+        commands.entity(text).despawn();
+    }
+}
+
+fn ui_invis(mut query: Query<&mut Visibility, (With<Text>, Without<IntroText>)>){
     for mut vis in query.iter_mut(){
         vis.is_visible = false;
     }
@@ -377,6 +506,9 @@ fn toggle_state(
                 state.set(GameState::Pause).unwrap();
             }
             GameState::Pause => {
+                state.set(GameState::Game).unwrap();
+            }
+            GameState::Dead => {
                 state.set(GameState::Game).unwrap();
             }
         }
@@ -474,6 +606,7 @@ fn manage_collisions(
     mut score: ResMut<Score>,
     mut speed: ResMut<Speed>,
     mut rgb: ResMut<OrbsRGB>,
+    mut state: ResMut<State<GameState>>, 
     size: Res<Size>,
     windows: Res<Windows>,
     mut commands: Commands,
@@ -504,7 +637,7 @@ fn manage_collisions(
                         pickup_event_writer.send(PickupCollision(*entity_b));
                         score.value += 1;
 
-                        if score.value >= 10 {
+                        if score.value >= 100 {
                             // delete all pickups
                             for mut pick in pick_q.iter_mut(){
                                 commands.entity(pick).despawn_recursive();
@@ -557,6 +690,11 @@ fn manage_collisions(
                     },
                     (Some(CollideType::Player), Some(CollideType::Orb)) => {
                         //player hit orb
+                        if score.value < 100 {
+                            state.set(GameState::Dead).unwrap();
+                        } else {
+                            commands.entity(*entity_b).despawn_recursive();
+                        }
                     },
                     (Some(CollideType::Pickup), Some(CollideType::Orb)) => {
                         //pickup hit orb
