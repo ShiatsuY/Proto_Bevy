@@ -10,8 +10,8 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 title: "Proto".to_string(),
-                width: 1920.,
-                height: 1080.,
+                width: 1280.,
+                height: 720.,
                 ..default()
             },
             ..default()
@@ -607,7 +607,7 @@ fn detect_collisions(
                 
                 if distance.length() <= collider_a.0 + collider_b.0 {
                     //to enforce order as player < pickup < orb for easier handling
-                    println!{"{}", distance};
+                    //println!{"{}", distance};
                     if collide_type_a < collide_type_b {
                         event_writer.send(CollisionEvent(entity_a, entity_b));
                     } else {
@@ -819,12 +819,15 @@ fn movement(
     if let Ok(mut transform) = query.get_single_mut() {
         let window = windows.get_primary_mut().unwrap();
         let mut direction = Vec3::ZERO;
+        println!("y: {}, size: {}", transform.translation.y, size.player);
 
         if input.pressed(KeyCode::W) && transform.translation.y + size.player < window.height()/2.  {
             direction.y += 1.;
+            if 
         }
         if input.pressed(KeyCode::S) && transform.translation.y - size.player > -window.height()/2.  {
             direction.y -= 1.;
+            println!("y: {}, size: {}", transform.translation.y, size.player);
         }
         if input.pressed(KeyCode::D) && transform.translation.x + size.player < window.width()/2.  {
             direction.x += 1.;
