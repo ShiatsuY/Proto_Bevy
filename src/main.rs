@@ -169,6 +169,7 @@ struct GameTime {
 
 fn reset_game(
     mut windows: ResMut<Windows>,
+    mut color: ResMut<OrbsRGB>,
     mut size: ResMut<Sizes>,
     mut speed: ResMut<Speed>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -176,27 +177,62 @@ fn reset_game(
     mut commands: Commands,
     mut score: ResMut<Score>,
     mut time: ResMut<GameTime>,
-    mut player_query: Query<&mut Transform, (With<Player>, Without<Orb>)>,
-    mut orb_query: Query<&mut Transform, (With<Orb>, Without<Player>)>
+    mut player_query: Query<(Entity, &mut Transform), (With<Player>, Without<Orb>)>,
+    mut orb_query: Query<(Entity, &mut Transform), (With<Orb>, Without<Player>)>
 ) {
-    score.value = 0;
-    time.value = 0.;
     let mut rng = rand::thread_rng();
     let window = windows.get_primary_mut().unwrap();
 
-    for mut transform in player_query.iter_mut(){
+    score.value = 0;
+    time.value = 0.;
+    color.r = 1.;
+    color.g = 0.;
+    color.b = 0.;
+    speed.orb = window.width()/8.;
+    
+    for (mut p, mut transform) in player_query.iter_mut(){
         let p_x = -window.width()/4.;
         let p_y = 0.;
+
         transform.translation.x = p_x;
         transform.translation.y = p_y;
+        commands.entity(p).despawn_descendants();
+        commands
+            .entity(p)
+            .with_children(|parent| {
+                parent.spawn(MaterialMesh2dBundle {
+                    mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
+                    material: materials.add(ColorMaterial::from(Color::BLUE)),
+                    transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
+                    ..default()
+                });
+                parent.spawn(MaterialMesh2dBundle {
+                    mesh: meshes.add(shape::Circle::new(size.player * 0.0095 * score.value as f32).into()).into(),
+                    material: materials.add(ColorMaterial::from(Color::WHITE)),
+                    transform: Transform::from_translation(Vec3::new(0.,0.,5.)),
+                    ..default()
+                });
+            });
     }
     let mut i = 0;
-    for mut transform in orb_query.iter_mut(){
+    for (mut o, mut transform) in orb_query.iter_mut(){
         let o_x = (window.width() + size.orb + i as f32 * size.orb * 2. + i as f32 * size.orb) - window.width()/2.;
         let o_y = rng.gen_range(size.orb - window.height()/2. .. -size.orb + window.height()/2.);
         transform.translation.x = o_x;
         transform.translation.y = o_y;
         i += 1;
+        commands.entity(o).despawn_descendants();
+        commands
+            .entity(o)
+            .with_children(|parent| {
+                parent.spawn(MaterialMesh2dBundle {
+                    mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
+                    material: materials.add(ColorMaterial::from(Color::RED)),
+                    transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
+                    ..default()
+                }).insert(OrbBorder);
+            });
+
     }
 }
 
@@ -363,7 +399,7 @@ fn setup(
         let y = rng.gen_range(size.orb - window.height()/2. .. -size.orb + window.height()/2.);
 
         commands.spawn(MaterialMesh2dBundle {
-            mesh: meshes.add(shape::Circle::new(size.orb * 0.975).into()).into(),
+            mesh: meshes.add(shape::Circle::new(size.orb * 0.95).into()).into(),
             material: materials.add(ColorMaterial::from(Color::BLACK)),
             transform: Transform::from_translation(Vec3::new(x, y, 1.)),
             ..default()
@@ -373,7 +409,7 @@ fn setup(
             .insert(Collider(size.orb))
         .with_children(|parent| {
             parent.spawn(MaterialMesh2dBundle {
-                mesh: meshes.add(shape::Circle::new(size.orb * 1.3).into()).into(),
+                mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
                 material: materials.add(ColorMaterial::from(Color::RED)),
                 transform: Transform::from_translation(Vec3::new(0., 0., -1.)),
                 ..default()
@@ -410,7 +446,7 @@ fn setup(
     commands.spawn(MaterialMesh2dBundle {
         mesh: meshes.add(shape::Circle::new(size.player).into()).into(),
         material: materials.add(ColorMaterial::from(Color::WHITE)),
-        transform: Transform::from_translation(Vec3::new(p_x, p_y, 1.)),
+        transform: Transform::from_translation(Vec3::new(p_x, p_y, 2.)),
         visibility: Visibility {
             is_visible: false,
         },
@@ -423,7 +459,7 @@ fn setup(
             parent.spawn(MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
                 material: materials.add(ColorMaterial::from(Color::BLUE)),
-                transform: Transform::from_translation(Vec3::new(0., 0., 2.)),
+                transform: Transform::from_translation(Vec3::new(0., 0., 3.)),
                 ..default()
             });
         });
@@ -819,15 +855,12 @@ fn movement(
     if let Ok(mut transform) = query.get_single_mut() {
         let window = windows.get_primary_mut().unwrap();
         let mut direction = Vec3::ZERO;
-        println!("y: {}, size: {}", transform.translation.y, size.player);
 
         if input.pressed(KeyCode::W) && transform.translation.y + size.player < window.height()/2.  {
             direction.y += 1.;
-            if 
         }
         if input.pressed(KeyCode::S) && transform.translation.y - size.player > -window.height()/2.  {
             direction.y -= 1.;
-            println!("y: {}, size: {}", transform.translation.y, size.player);
         }
         if input.pressed(KeyCode::D) && transform.translation.x + size.player < window.width()/2.  {
             direction.x += 1.;
@@ -835,7 +868,21 @@ fn movement(
         if input.pressed(KeyCode::A) && transform.translation.x - size.player > -window.width()/2. {
             direction.x -= 1.;
         }
+
         transform.translation += speed.player * time.delta_seconds() * direction.normalize_or_zero();
+
+        if transform.translation.x < -window.width()/2. + size.player {
+            transform.translation.x = -window.width()/2. + size.player;
+        }
+        if transform.translation.x > window.width()/2. - size.player {
+            transform.translation.x = window.width()/2. - size.player;
+        }
+        if transform.translation.y < -window.height()/2. + size.player {
+            transform.translation.y = -window.height()/2. + size.player;
+        }
+        if transform.translation.y > window.height()/2. - size.player {
+            transform.translation.y = window.height()/2. - size.player;
+        }
     }
 }
 
