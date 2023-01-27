@@ -1,6 +1,7 @@
 use bevy::{
     prelude::*,
     sprite::MaterialMesh2dBundle,
+    window::WindowMode::BorderlessFullscreen,
     //diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
 };
 use rand::Rng;
@@ -10,8 +11,9 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             window: WindowDescriptor {
                 title: "Proto".to_string(),
-                width: 1280.,
-                height: 720.,
+                mode: BorderlessFullscreen,
+                //width: 1280.,
+                //height: 720.,
                 ..default()
             },
             ..default()
@@ -43,6 +45,13 @@ fn main() {
         .insert_resource(GameTime{
             value: 0.,
         })
+        .insert_resource(IDmin{
+            value: -1,
+            last: -1,
+        })
+        .insert_resource(Dist{
+            value: f32::INFINITY,
+        })
         
         .add_event::<CollisionEvent>()
         .add_event::<PickupCollision>()
@@ -69,6 +78,7 @@ fn main() {
                 .with_system(update_score)
                 .with_system(move_scene)
                 .with_system(play_music)
+                .with_system(nearest_pick)
         )
         .add_system_set(
             SystemSet::on_enter(GameState::Dead)
@@ -128,6 +138,10 @@ struct IntroText;
 #[derive(Component)]
 struct DeadText;
 #[derive(Component)]
+struct PickID {
+    number: i32,
+}
+#[derive(Component)]
 struct RootNode;
 // TODO: manage text as enum and events
 
@@ -161,10 +175,79 @@ struct OrbsRGB {
     g: f32,
     b: f32,
 }
-
 #[derive(Resource)]
 struct GameTime {
     value: f32,
+}
+#[derive(Resource)]
+struct IDmin {
+    value: i32,
+    last: i32,
+}
+#[derive(Resource)]
+struct Dist {
+    value: f32,
+}
+
+fn nearest_pick(
+    mut commands: Commands,
+    mut pick_q: Query<(Entity, &Transform, &PickID), With<Pickup>>,
+    player_q: Query<&Transform, With<Player>>,
+    mut min_id: ResMut<IDmin>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut size: ResMut<Sizes>,
+    mut dist: ResMut<Dist>
+) {
+    dist.value = f32::INFINITY;
+    let mut vs = Vec::new();
+    for player in player_q.iter(){
+        for (mut entity, pick, pick_id) in pick_q.iter_mut() {
+            dist.value = player.translation.distance(pick.translation);
+            vs.push((dist.value, pick_id.number));
+        }
+    }
+    let mut minid = -1;
+    let mut minvalue = f32::INFINITY;
+    for v in vs {
+        let (a, b) = v;
+        if a < minvalue {
+            minvalue = a;
+            minid = b;
+        }
+    }
+    min_id.value = minid;
+
+    if min_id.value != min_id.last {
+        for (mut entity, pick, pick_id) in pick_q.iter_mut() {
+            if pick_id.number == min_id.value {
+                commands.entity(entity).despawn_descendants();
+                    commands.entity(entity)
+                        .with_children(|parent| {
+                            parent.spawn(MaterialMesh2dBundle {
+                                mesh: meshes.add(shape::Circle::new(size.pickup).into()).into(),
+                                material: materials.add(ColorMaterial::from(Color::YELLOW)),
+                                transform: Transform::from_translation(Vec3::new(0., 0., -1.)),
+                                ..default()
+                            });
+                        });
+            }
+            if pick_id.number == min_id.last {
+                commands.entity(entity).despawn_descendants();
+                    commands.entity(entity)
+                        .with_children(|parent| {
+                            parent.spawn(MaterialMesh2dBundle {
+                                mesh: meshes.add(shape::Circle::new(size.pickup).into()).into(),
+                                material: materials.add(ColorMaterial::from(Color::BLUE)),
+                                transform: Transform::from_translation(Vec3::new(0., 0., -1.)),
+                                ..default()
+                            });
+                        });
+                
+            }
+        }
+    }
+    min_id.last = min_id.value;
 }
 
 fn reset_game(
@@ -232,7 +315,6 @@ fn reset_game(
                     ..default()
                 }).insert(OrbBorder);
             });
-
     }
 }
 
@@ -300,7 +382,7 @@ fn setup(
             score.value.to_string(),
             TextStyle {
                 font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                font_size: 30.0,
+                font_size: window.width()/40.,
                 color: text_color,
             },
         )
@@ -322,7 +404,7 @@ fn setup(
             "0.0",
             TextStyle {
                 font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                font_size: 30.0,
+                font_size: window.width()/40.,
                 color: text_color,
             },
         )
@@ -344,7 +426,7 @@ fn setup(
             volume.value.to_string() + "%",
             TextStyle {
                 font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                font_size: 30.0,
+                font_size: window.width()/40.,
                 color: text_color,
             },
         )
@@ -364,7 +446,7 @@ fn setup(
     // Pickups
     size.pickup = window.width() * 0.01;
 
-    for _i in 0..9{
+    for i in 0..10{
         let x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
         let y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
 
@@ -378,6 +460,7 @@ fn setup(
             ..default()
         })
             .insert(Pickup)
+            .insert(PickID{number: i})
             .insert(CollideType::Pickup)
             .insert(Collider(size.pickup))
         .with_children(|parent| {
@@ -566,70 +649,6 @@ fn toggle_state(
     }
 }
 
-fn _toggle_cursor(input: Res<Input<KeyCode>>, mut windows: ResMut<Windows>) {
-    let window = windows.primary_mut();
-    if input.just_pressed(KeyCode::Space) {
-        window.set_cursor_visibility(!window.cursor_visible());
-    }
-}
-
-fn _collision(
-    windows: Res<Windows>,
-    mut score: ResMut<Score>,
-    mut speed: ResMut<Speed>,
-    size: Res<Sizes>,
-    player_q: Query<&Transform, (With<Player>, Without<Orb>, Without<Pickup>)>,
-    orb_q: Query<&Transform, (With<Orb>, Without<Pickup>)>,
-    mut pick_q: Query<&mut Transform, With<Pickup>>,
-) {
-    // There can ever be only 1 Player
-    if let Ok(transform_p) = player_q.get_single() {
-
-        // collision with orb
-        for transform_o in orb_q.iter(){
-            let a = size.orb + size.player;
-            let x = transform_o.translation.x - transform_p.translation.x;
-            let y = transform_o.translation.y - transform_p.translation.y;
-
-            if a > (((x*x) + (y*y)) as f32).sqrt(){
-                speed.orb = 0.0;
-                speed.player = 0.0;
-                // die or lose 1 live
-            }
-            // collision orb - pickup
-            for mut transform_pick in pick_q.iter_mut(){
-                let a2 = size.pickup + size.orb;
-                let x2 = transform_pick.translation.x - transform_o.translation.x;
-                let y2 = transform_pick.translation.y - transform_o.translation.y;
-            
-                if a2 > (((x2*x2) + (y2*y2)) as f32).sqrt(){
-                    let window = windows.get_primary().unwrap();
-                    let mut rng = rand::thread_rng();
-                    transform_pick.translation.x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
-                    transform_pick.translation.y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
-                }
-            }
-
-        }
-
-        // collision with pickup
-        for mut transform_pick in pick_q.iter_mut(){
-            let a = size.pickup + size.player;
-            let x = transform_pick.translation.x - transform_p.translation.x;
-            let y = transform_pick.translation.y - transform_p.translation.y;
-        
-            if a > (((x*x) + (y*y)) as f32).sqrt(){
-                let window = windows.get_primary().unwrap();
-                let mut rng = rand::thread_rng();
-                transform_pick.translation.x = rng.gen_range(size.pickup - window.width()/2. .. -size.pickup + window.width()/2.);
-                transform_pick.translation.y = rng.gen_range(size.pickup - window.height()/2. .. -size.pickup + window.height()/2.);
-                // increment counter
-                score.value += 1;
-            }
-        }
-    }
-}
-
 fn detect_collisions(
     collision_query: Query<(Entity, &Collider, &CollideType, &Transform)>,
     mut event_writer: EventWriter<CollisionEvent>,
@@ -690,58 +709,59 @@ fn manage_collisions(
                         pickup_event_writer.send(PickupCollision(*entity_b));
                         score.value += 1;
 
+                        if score.value <= 100 {
+                            commands
+                                .entity(*entity_a)
+                                .with_children(|parent| {
+                                    parent.spawn(MaterialMesh2dBundle {
+                                        mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
+                                        material: materials.add(ColorMaterial::from(Color::BLUE)),
+                                        transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
+                                        ..default()
+                                    });
+                                    parent.spawn(MaterialMesh2dBundle {
+                                        mesh: meshes.add(shape::Circle::new(size.player * score.value as f32 / 100. as f32).into()).into(),
+                                        material: materials.add(ColorMaterial::from(Color::WHITE)),
+                                        transform: Transform::from_translation(Vec3::new(0.,0.,5.)),
+                                        ..default()
+                                    });
+                                });
+                        
+                            let window = windows.get_primary().unwrap();
+                            // window.width()/8.
+                            speed.orb += window.width()/700.;
+                            //println!("{}", speed.orb);
+                            rgb.r -= 0.01;
+                            rgb.b += 0.01;
+
+                            let new_rgb = Color::Rgba {
+                                red: rgb.r,
+                                green: rgb.g,
+                                blue: rgb.b,
+                                alpha: 1.0,
+                            };
+
+                            for o in o_query.iter_mut(){
+                                commands.entity(o).despawn_descendants();
+
+                                commands
+                                    .entity(o)
+                                    .with_children(|parent| {
+                                        parent.spawn(MaterialMesh2dBundle {
+                                            mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
+                                            material: materials.add(ColorMaterial::from(new_rgb)),
+                                            transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
+                                            ..default()
+                                        }).insert(OrbBorder);
+                                    });
+                            }
+                        }
                         if score.value >= 100 {
                             // delete all pickups
                             for mut pick in pick_q.iter_mut(){
                                 commands.entity(pick).despawn_recursive();
                             }
-                        } else {
-                        
-                        commands
-                            .entity(*entity_a)
-                            .with_children(|parent| {
-                                parent.spawn(MaterialMesh2dBundle {
-                                    mesh: meshes.add(shape::Circle::new(size.player * 0.95).into()).into(),
-                                    material: materials.add(ColorMaterial::from(Color::BLUE)),
-                                    transform: Transform::from_translation(Vec3::new(0.,0.,4.)),
-                                    ..default()
-                                });
-                                parent.spawn(MaterialMesh2dBundle {
-                                    mesh: meshes.add(shape::Circle::new(size.player * 0.0095 * score.value as f32).into()).into(),
-                                    material: materials.add(ColorMaterial::from(Color::WHITE)),
-                                    transform: Transform::from_translation(Vec3::new(0.,0.,5.)),
-                                    ..default()
-                                });
-                            });
-                        
-                        let window = windows.get_primary().unwrap();
-                        // window.width()/8.
-                        speed.orb += window.width()/800.;
-                        //println!("{}", speed.orb);
-                        rgb.r -= 0.01;
-                        rgb.b += 0.01;
-
-                        let new_rgb = Color::Rgba {
-                            red: rgb.r,
-                            green: rgb.g,
-                            blue: rgb.b,
-                            alpha: 1.0,
-                        };
-
-                        for o in o_query.iter_mut(){
-                            commands.entity(o).despawn_descendants();
-
-                            commands
-                                .entity(o)
-                                .with_children(|parent| {
-                                    parent.spawn(MaterialMesh2dBundle {
-                                        mesh: meshes.add(shape::Circle::new(size.orb).into()).into(),
-                                        material: materials.add(ColorMaterial::from(new_rgb)),
-                                        transform: Transform::from_translation(Vec3::new(0.,0.,-1.)),
-                                        ..default()
-                                    }).insert(OrbBorder);
-                                });
-                        }}
+                        }
                     },
                     (Some(CollideType::Player), Some(CollideType::Orb)) => {
                         //player hit orb
@@ -793,38 +813,6 @@ fn handle_pickup_collision(
                     );
             }
          }
-    }
-}
-
-fn _increase_size(
-    input: Res<Input<KeyCode>>,
-    windows: Res<Windows>,
-    mut size: ResMut<Sizes>,
-    mut speed: ResMut<Speed>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut commands: Commands,
-    mut query: Query<Entity, With<Player>>,
-) {
-    let window = windows.get_primary().unwrap();
-
-    if let Ok(entity) = query.get_single_mut() {
-        if input.just_pressed(KeyCode::Space) {
-            if speed.orb == 0.0 {
-                speed.orb = window.width()/8.;
-                speed.player = window.width()/3.;
-                speed.star = window.width()/2000.;
-            } else {
-                speed.orb = 0.0;
-                speed.player = 0.0;
-                speed.star = 0.0;
-            }
-            size.player = size.player + window.height()/4800.;
-            commands
-                .entity(entity)
-                .insert(Into::<bevy::sprite::Mesh2dHandle>::into(meshes
-                    .add(shape::Circle::new(size.player)
-                        .into())));
-        }
     }
 }
 
